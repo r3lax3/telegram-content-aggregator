@@ -2,7 +2,8 @@ import asyncio
 import json
 import os
 
-from aio_pika import connect_robust, IncomingMessage
+from aio_pika import connect_robust
+from aio_pika.abc import AbstractIncomingMessage
 
 from core.logger import get_logger
 from core.db import SessionLocal
@@ -23,7 +24,7 @@ async def run_rabbitmq_consumer(stop_event: asyncio.Event):
 
         queue = await channel.declare_queue("events_queue", durable=True)
 
-        async def on_message(message: IncomingMessage):
+        async def on_message(message: AbstractIncomingMessage):
             await _process_event(message)
 
         await queue.consume(on_message, no_ack=False)
@@ -54,7 +55,7 @@ async def _get_rabbitmq_connection():
     raise RuntimeError("Failed to connect to RabbitMQ after max retries")
 
 
-async def _process_event(message: IncomingMessage):
+async def _process_event(message: AbstractIncomingMessage):
     """Process incoming RabbitMQ message."""
     async with message.process():
         try:
