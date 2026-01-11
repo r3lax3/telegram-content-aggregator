@@ -6,9 +6,9 @@ import time
 import os
 
 from core.domain.entities import Base
-from utils.log import setup_logger
+from core.logger import get_logger
 
-logger = setup_logger(__name__)
+logger = get_logger(__name__)
 
 DATABASE_URL = os.environ["SCRAPPER_DATABASE_URL"]
 
