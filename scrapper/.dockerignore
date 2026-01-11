@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Session and credentials (should be mounted as volumes)
+*.session
+cookies.json
+
+# Logs and temp files
+*.log
+error_*.html
+
+# Tests
+tests/
+pytest.ini
+.pytest_cache
+
+# Documentation
+*.md
+docs/
