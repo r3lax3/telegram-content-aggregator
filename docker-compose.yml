@@ -53,6 +53,8 @@ services:
     ports:
       - "5000:5000"
     volumes:
+      - ./scrapper:/app
+      - /app/__pycache__
       - ./scrapper/tg_acc.session:/app/tg_acc.session
       - ./scrapper/cookies.json:/app/cookies.json
     depends_on:
