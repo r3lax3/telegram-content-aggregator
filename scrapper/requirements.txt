@@ -17,3 +17,6 @@ lxml>=5.0.0
 
 # Telegram
 telethon>=1.34.0
+
+# Message queue
+aio-pika>=9.0.0

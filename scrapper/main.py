@@ -23,7 +23,7 @@ def main():
         stop_event.set()
 
     async def async_main():
-        tasks = [asyncio.create_task(run_rabbitmq_consumer())]
+        tasks = [asyncio.create_task(run_rabbitmq_consumer(stop_event))]
 
         if USE_API:
             tasks.append(asyncio.create_task(run_api()))
