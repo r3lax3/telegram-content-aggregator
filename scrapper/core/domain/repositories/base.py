@@ -44,11 +44,11 @@ class ChannelBaseRepository(ABC, Generic[T]):
         ...
 
     @abstractmethod
-    def update(self, id: int, **kwargs) -> None:
+    def update(self, username: str, **kwargs) -> None:
         ...
 
     @abstractmethod
-    def delete(self, id: int) -> None:
+    def delete(self, username: str) -> None:
         ...
 
 

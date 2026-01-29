@@ -41,3 +41,7 @@ class VideoUnavailableException(ScrappingError):
 class MediaUnavailableException(ScrappingError):
     """Raised when media (e.g., carousel) is unavailable."""
     pass
+
+
+class RobotSuspition(ScrappingError):
+    pass

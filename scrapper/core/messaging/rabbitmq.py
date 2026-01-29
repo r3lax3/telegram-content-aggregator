@@ -2,18 +2,25 @@ import asyncio
 import json
 import os
 
-from aio_pika import connect_robust, IncomingMessage
+from aio_pika import connect_robust
+from aio_pika.abc import AbstractIncomingMessage
 
+from core.di import DependencyInjector
 from core.logger import get_logger
-from core.db import SessionLocal
-from core.domain import UOW
+
 
 logger = get_logger(__name__)
 
-RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+RABBITMQ_URL = os.getenv(
+    "RABBITMQ_URL",
+    "amqp://guest:guest@localhost:5672/"
+)
 
 
-async def run_rabbitmq_consumer(stop_event: asyncio.Event):
+async def run_rabbitmq_consumer(
+    stop_event: asyncio.Event,
+    di: DependencyInjector
+):
     """Main RabbitMQ consumer coroutine."""
     connection = await _get_rabbitmq_connection()
 
@@ -23,8 +30,8 @@ async def run_rabbitmq_consumer(stop_event: asyncio.Event):
 
         queue = await channel.declare_queue("events_queue", durable=True)
 
-        async def on_message(message: IncomingMessage):
-            await _process_event(message)
+        async def on_message(message: AbstractIncomingMessage):
+            await _process_event(message, di)
 
         await queue.consume(on_message, no_ack=False)
         logger.info("RabbitMQ consumer started")
@@ -40,10 +47,12 @@ async def _get_rabbitmq_connection():
     max_retries = 20
 
     for attempt in range(max_retries):
+
         try:
             connection = await connect_robust(RABBITMQ_URL)
             logger.info("Connected to RabbitMQ")
             return connection
+
         except Exception as e:
             logger.warning(
                 f"RabbitMQ connection failed ({attempt + 1}/{max_retries}): {e}, "
@@ -54,7 +63,10 @@ async def _get_rabbitmq_connection():
     raise RuntimeError("Failed to connect to RabbitMQ after max retries")
 
 
-async def _process_event(message: IncomingMessage):
+async def _process_event(
+    message: AbstractIncomingMessage,
+    di: DependencyInjector
+):
     """Process incoming RabbitMQ message."""
     async with message.process():
         try:
@@ -64,6 +76,7 @@ async def _process_event(message: IncomingMessage):
 
             if event_type == "mark_post":
                 await _handle_mark_post(
+                    di=di,
                     post_id=payload["post_id"],
                     channel_username=payload["channel_username"],
                     mark=payload["mark"],
@@ -80,12 +93,18 @@ async def _process_event(message: IncomingMessage):
             raise
 
 
-async def _handle_mark_post(post_id: int, channel_username: str, mark: str):
+async def _handle_mark_post(
+    di: DependencyInjector,
+    post_id: int,
+    channel_username: str,
+    mark: str
+):
     """Handle mark_post event by updating post in database."""
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(
         None,
         _mark_post_sync,
+        di,
         post_id,
         channel_username,
         mark,
@@ -93,8 +112,13 @@ async def _handle_mark_post(post_id: int, channel_username: str, mark: str):
     logger.info(f"Marked post {post_id} in {channel_username} as '{mark}'")
 
 
-def _mark_post_sync(post_id: int, channel_username: str, mark: str):
+def _mark_post_sync(
+    di: DependencyInjector,
+    post_id: int,
+    channel_username: str,
+    mark: str
+):
     """Synchronous database operation to mark a post."""
-    with UOW(session_factory=SessionLocal) as uow:
+    with di.uow as uow:
         uow.posts.update(post_id, channel_username, mark=mark)
         uow.commit()

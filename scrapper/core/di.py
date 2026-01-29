@@ -11,7 +11,7 @@ from core.db import SessionLocal
 class DependencyInjector(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    app: Optional[FastAPI] = None
+    app: FastAPI
     services: ServicesContainer
     uow: UOW
 

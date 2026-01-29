@@ -45,13 +45,16 @@ async def get_channel_new_posts(channel_username: str, uow: UOW) -> List[PostSch
     """
     try:
         html = await get_channel_info_html(channel_username)
+
     except ChannelNotFound:
         raise
+
     except ScrappingError:
         logger.error(
             f"Scrapping error. HTML saved to data/error-{channel_username}.html"
         )
         return []
+
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
         return []

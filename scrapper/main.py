@@ -2,12 +2,12 @@ import asyncio
 import os
 import signal
 
+from core.di import initialize_di_container
 from core.logger import get_logger
 
 from core.api.run import run_api
 from core.messaging import run_rabbitmq_consumer
 from core.workers import run_update_info_worker
-
 
 
 logger = get_logger(__name__)
@@ -23,13 +23,15 @@ def main():
         stop_event.set()
 
     async def async_main():
-        tasks = [asyncio.create_task(run_rabbitmq_consumer(stop_event))]
+        di = initialize_di_container()
+
+        tasks = [asyncio.create_task(run_rabbitmq_consumer(stop_event, di))]
 
         if USE_API:
-            tasks.append(asyncio.create_task(run_api()))
+            tasks.append(asyncio.create_task(run_api(di)))
 
         if UPDATE_INFO:
-            tasks.append(asyncio.create_task(run_update_info_worker()))
+            tasks.append(asyncio.create_task(run_update_info_worker(di.uow)))
 
         await stop_event.wait()
 

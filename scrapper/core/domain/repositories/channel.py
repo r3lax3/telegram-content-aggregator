@@ -18,9 +18,10 @@ class SQLChannelRepository(ChannelBaseRepository[Channel]):
 
         return channel
 
-    def get_one(self, username: str) -> Optional[Channel]:
+    def get_one(self, username: str, **kwargs) -> Optional[Channel]:
         return self.session.query(Channel).filter_by(
-            username=username
+            username=username,
+            **kwargs
         ).one_or_none()
 
     def get_many(self, **kwargs) -> List[Channel]:
@@ -48,7 +49,7 @@ class SQLChannelRepository(ChannelBaseRepository[Channel]):
             .first()
         )
 
-    def update(self, username: int, **kwargs) -> None:
+    def update(self, username: str, **kwargs) -> None:
         channel = self.session.query(Channel).filter_by(username=username).one_or_none()
         if channel:
             for key, value in kwargs.items():
