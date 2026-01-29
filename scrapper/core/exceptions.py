@@ -45,3 +45,6 @@ class MediaUnavailableException(ScrappingError):
 
 class RobotSuspition(ScrappingError):
     pass
+
+class TelegramSessionNotFound(Exception):
+    pass

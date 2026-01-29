@@ -1,51 +1,37 @@
 import asyncio
-import os
-import signal
 
-from core.di import initialize_di_container
-from core.logger import get_logger
+from dishka import make_async_container
+from typing import Coroutine, List
 
 from core.api.run import run_api
-from core.messaging import run_rabbitmq_consumer
-from core.workers import run_update_info_worker
+from core.runner import AppRunner
+from core.config.settings import Settings
+
+from core.scrapper.worker import ScrapperWorker
+from main_factory import get_all_dishka_providers
 
 
-logger = get_logger(__name__)
+async def main():
+    runner = AppRunner()
 
-UPDATE_INFO = os.environ.get("UPDATE_INFO")
-USE_API = os.environ.get("USE_API")
+    dishka = make_async_container(*get_all_dishka_providers())
+    settings = await dishka.get(Settings)
 
+    corutines: List[Coroutine] = []
 
-def main():
-    stop_event = asyncio.Event()
+    if settings.ENABLE_SCRAPPER_LOOP:
+        worker = await dishka.get(ScrapperWorker)
+        corutines.append(worker.run())
 
-    def handle_signal():
-        stop_event.set()
+    if settings.ENABLE_API:
+        corutines.append(run_api())
 
-    async def async_main():
-        di = initialize_di_container()
+    if settings.ENABLE_EVENT_CONSUMER:
+        corutines.append(run_event_consumer())
 
-        tasks = [asyncio.create_task(run_rabbitmq_consumer(stop_event, di))]
-
-        if USE_API:
-            tasks.append(asyncio.create_task(run_api(di)))
-
-        if UPDATE_INFO:
-            tasks.append(asyncio.create_task(run_update_info_worker(di.uow)))
-
-        await stop_event.wait()
-
-        for task in tasks:
-            task.cancel()
-
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-    loop = asyncio.new_event_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, handle_signal)
-
-    loop.run_until_complete(async_main())
+    await runner.run(*corutines)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
+
