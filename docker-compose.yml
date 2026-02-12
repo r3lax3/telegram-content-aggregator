@@ -57,6 +57,25 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: tgstat_bot
+    env_file:
+      - bot.env
+    volumes:
+      - ./bot:/app
+      - /app/__pycache__
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      scrapper:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   rabbitmq_data:

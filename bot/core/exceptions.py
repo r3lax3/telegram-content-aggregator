@@ -1,0 +1,2 @@
+class AdvertiseFoundError(Exception):
+    pass

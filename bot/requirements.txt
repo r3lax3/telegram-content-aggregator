@@ -1,0 +1,23 @@
+# Bot framework
+aiogram>=3.0.0
+
+# HTTP client
+aiohttp>=3.9.0
+
+# Data validation
+pydantic>=2.5.0
+pydantic-settings>=2.0.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# DI
+dishka>=1.0.0
+
+# Message queue
+aio-pika>=9.0.0
+
+# Scheduling
+apscheduler>=3.10.0
+python-dateutil>=2.8.0
