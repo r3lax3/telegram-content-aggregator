@@ -1,3 +1,5 @@
+import os
+
 from playwright.async_api import async_playwright, Browser, BrowserContext, Playwright
 from playwright_stealth import Stealth
 
@@ -17,7 +19,13 @@ class PlaywrightManager:
         )
         self._context = await self._browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+                    "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+            # TODO отвязать от ос и привязать к настройкам
+            proxy={
+                "server": os.getenv("PROXY_SERVER"),  # pyright: ignore
+                "username": os.getenv("PROXY_USERNAME"), # pyright: ignore
+                "password": os.getenv("PROXY_PASSWORD"), # pyright: ignore
+            } if os.getenv("PROXY_SERVER") else None,
         )
         await self._stealth.apply_stealth_async(self._context)
         return self

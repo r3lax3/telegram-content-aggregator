@@ -23,6 +23,7 @@ from core.config.settings import Settings
 from core.scrapper.worker import ScrapperWorker
 from core.database.uow import UnitOfWork
 from core.scrapper.browser import PlaywrightManager
+from core.event_consumer import EventConsumer
 
 
 class ConfigProvider(Provider):
@@ -88,6 +89,14 @@ class PlaywrightProvider(Provider):
     async def get_playwright_manager(self) -> AsyncIterable[PlaywrightManager]:
         async with PlaywrightManager() as pm:
             yield pm
+
+
+class EventConsumerProvider(Provider):
+    scope = Scope.APP
+
+    @provide
+    def get_event_consumer(self, settings: Settings, container: AsyncContainer) -> EventConsumer:
+        return EventConsumer(settings, container)
 
 
 def get_all_dishka_providers() -> List[Provider]:

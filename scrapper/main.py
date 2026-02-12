@@ -6,8 +6,9 @@ from typing import Coroutine, List
 from core.api.run import run_api
 from core.runner import AppRunner
 from core.config.settings import Settings
-
 from core.scrapper.worker import ScrapperWorker
+from core.event_consumer import EventConsumer
+
 from main_factory import get_all_dishka_providers
 
 
@@ -27,7 +28,8 @@ async def main():
         corutines.append(run_api())
 
     if settings.ENABLE_EVENT_CONSUMER:
-        corutines.append(run_event_consumer())
+        consumer = await dishka.get(EventConsumer)
+        corutines.append(consumer.run())
 
     await runner.run(*corutines)
 
