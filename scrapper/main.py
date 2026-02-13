@@ -19,12 +19,19 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+logger = logging.getLogger(__name__)
+
 
 async def main():
     runner = AppRunner()
 
     dishka = make_async_container(*get_all_dishka_providers())
     settings = await dishka.get(Settings)
+
+    logger.info(
+        f"Конфиг: loop={settings.ENABLE_SCRAPPER_LOOP}, "
+        f"api={settings.ENABLE_API}, consumer={settings.ENABLE_EVENT_CONSUMER}"
+    )
 
     corutines: List[Coroutine] = []
 
@@ -39,6 +46,7 @@ async def main():
         consumer = await dishka.get(EventConsumer)
         corutines.append(consumer.run())
 
+    logger.info(f"Запускаем {len(corutines)} компонентов")
     await runner.run(*corutines)
 
 
