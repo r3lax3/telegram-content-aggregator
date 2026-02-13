@@ -69,6 +69,9 @@ class ScrapperService:
             except PlaywrightTimeoutError:
                 logger.info(f"Timeout при загрузке @{username}, ждём 60 сек...")
                 await asyncio.sleep(60)
+            except ScrappingError:
+                logger.info(f"[@{username}] Ошибка загрузки (попытка {attempt + 1}/2), сбрасываем куки")
+                self._invalidate_cookies()
 
         raise ScrappingError(f"Не удалось загрузить канал @{username}")
 
@@ -142,6 +145,11 @@ class ScrapperService:
     def _save_cookies(self, cookies: list[dict]) -> None:
         with open(COOKIES_PATH, "w", encoding="utf-8") as f:
             json.dump(cookies, f, indent=2, ensure_ascii=False)
+
+    def _invalidate_cookies(self) -> None:
+        if COOKIES_PATH.exists():
+            COOKIES_PATH.unlink()
+            logger.info("Куки удалены")
 
     async def _regenerate_cookies(self) -> None:
         """Авторизация на tgstat.ru через Telegram бота."""
