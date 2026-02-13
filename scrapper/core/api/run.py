@@ -1,6 +1,6 @@
 import uvicorn
 
-from api.app import app
+from core.api.app import app
 
 
 async def run_api():

@@ -1,5 +1,4 @@
-# core/event_consumer.py
-
+import logging
 import asyncio
 import json
 
@@ -8,9 +7,9 @@ from dishka import AsyncContainer
 
 from core.config.settings import Settings
 from core.database.uow import UnitOfWork
-from utils import setup_logger
 
-logger = setup_logger()
+
+logger = logging.getLogger(__name__)
 
 
 class EventConsumer:

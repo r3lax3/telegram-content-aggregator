@@ -1,8 +1,6 @@
-# core/scrapper/service.py
 import json
 import logging
 import asyncio
-import os
 from pathlib import Path
 
 from playwright.async_api import BrowserContext, TimeoutError as PlaywrightTimeoutError
@@ -20,6 +18,7 @@ from core.exceptions import (
 
 
 logger = logging.getLogger(__name__)
+
 
 COOKIES_PATH = Path("cookies.json")
 TG_SESSION_PATH = Path("tg_acc.session")
