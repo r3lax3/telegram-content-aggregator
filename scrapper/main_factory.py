@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
 
 from core.config.settings import Settings
 from core.scrapper.worker import ScrapperWorker
+from core.scrapper.service import ScrapperService
 from core.database.uow import UnitOfWork
 from core.scrapper.browser import PlaywrightManager
 from core.event_consumer import EventConsumer
@@ -82,6 +83,14 @@ class WorkerProvider(Provider):
         return ScrapperWorker(container)
 
 
+class ScrapperServiceProvider(Provider):
+    scope = Scope.REQUEST
+
+    @provide
+    def get_scrapper_service(self, pw_manager: PlaywrightManager) -> ScrapperService:
+        return ScrapperService(pw_manager)
+
+
 class PlaywrightProvider(Provider):
     scope = Scope.APP
 
@@ -106,6 +115,7 @@ def get_all_dishka_providers() -> List[Provider]:
         SessionProvider(),
         UOWProvider(),
         WorkerProvider(),
+        ScrapperServiceProvider(),
         PlaywrightProvider(),
         EventConsumerProvider(),
     ]
