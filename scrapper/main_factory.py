@@ -106,7 +106,8 @@ def get_all_dishka_providers() -> List[Provider]:
         SessionProvider(),
         UOWProvider(),
         WorkerProvider(),
-        PlaywrightProvider()
+        PlaywrightProvider(),
+        EventConsumerProvider(),
     ]
 
 
