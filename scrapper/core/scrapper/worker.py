@@ -22,9 +22,13 @@ class ScrapperWorker:
         self.container = container
 
     async def run(self):
+        logger.info(f"Воркер запущен (интервал {self.SCRAPPER_DELAY} сек)")
         while True:
-            async with self.container() as scope:
-                await self._process_one(scope)
+            try:
+                async with self.container() as scope:
+                    await self._process_one(scope)
+            except Exception as e:
+                logger.error(f"[WORKER] Критическая ошибка в цикле: {e}", exc_info=True)
             await asyncio.sleep(self.SCRAPPER_DELAY)
 
     async def _process_one(self, scope: AsyncContainer):
