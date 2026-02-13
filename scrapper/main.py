@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from dishka import make_async_container
 from typing import Coroutine, List
@@ -10,6 +11,13 @@ from core.scrapper.worker import ScrapperWorker
 from core.event_consumer import EventConsumer
 
 from main_factory import get_all_dishka_providers
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 async def main():
