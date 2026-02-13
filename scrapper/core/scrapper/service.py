@@ -44,17 +44,11 @@ class ScrapperService:
 
     async def update_data(self, uow: UnitOfWork, username: str) -> None:
         """Главный метод — загружает и сохраняет новые посты канала."""
-        try:
-            html = await self._fetch_channel_html(username)
-        except ChannelNotFound:
-            logger.warning(f"Канал @{username} не найден на tgstat.ru")
-            raise
-        except ScrappingError:
-            logger.error(f"Ошибка скраппинга канала @{username}")
-            return
+        html = await self._fetch_channel_html(username)
 
         posts = parse_channel_posts(html, username)
         if not posts:
+            logger.info(f"[@{username}] Постов на странице не найдено")
             return
 
         await self._save_new_posts(uow, username, posts)
@@ -118,6 +112,7 @@ class ScrapperService:
 
         new_posts = [p for p in posts if p.id > last_id]
         if not new_posts:
+            logger.info(f"[@{username}] Новых постов нет (всего на странице: {len(posts)}, last_id: {last_id})")
             return
 
         for post_dto in new_posts:
@@ -135,7 +130,6 @@ class ScrapperService:
                     url=media.url,
                 )
 
-        await uow.commit()
         logger.info(f"[@{username}] Сохранено {len(new_posts)} новых постов")
 
     def _load_cookies(self) -> list[dict]:
