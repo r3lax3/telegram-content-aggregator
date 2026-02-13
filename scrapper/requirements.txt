@@ -11,7 +11,7 @@ dishka>=1.0.0
 
 # Database
 sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
+asyncpg>=0.29.0
 
 # Web scraping
 playwright>=1.40.0
