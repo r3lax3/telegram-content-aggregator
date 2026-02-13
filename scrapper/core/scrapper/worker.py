@@ -1,9 +1,13 @@
 import asyncio
 import logging
+import time
+
+import datetime as dt
 
 from dishka import AsyncContainer
 
 from core.database.uow import UnitOfWork
+from core.exceptions import ChannelNotFound, ScrappingError
 from .service import ScrapperService
 
 
@@ -34,4 +38,24 @@ class ScrapperWorker:
             await asyncio.sleep(self.SCRAPPER_IDLE_DELAY)
             return
 
-        await service.update_data(uow, channel.username)
+        last_check = channel.last_update_check
+        last_check_str = last_check.strftime("%Y-%m-%d %H:%M:%S") if last_check else "никогда"
+        logger.info(f"[CHECK] Начинаем проверку @{channel.username} (последняя: {last_check_str})")
+
+        started = time.monotonic()
+        try:
+            await service.update_data(uow, channel.username)
+            elapsed = time.monotonic() - started
+            logger.info(f"[CHECK] @{channel.username} — проверка завершена за {elapsed:.1f} сек")
+        except ChannelNotFound:
+            elapsed = time.monotonic() - started
+            logger.warning(f"[CHECK] @{channel.username} — канал не найден ({elapsed:.1f} сек)")
+        except ScrappingError as e:
+            elapsed = time.monotonic() - started
+            logger.error(f"[CHECK] @{channel.username} — ошибка скраппинга ({elapsed:.1f} сек): {e}")
+        except Exception as e:
+            elapsed = time.monotonic() - started
+            logger.error(f"[CHECK] @{channel.username} — неожиданная ошибка ({elapsed:.1f} сек): {e}")
+        finally:
+            await uow.channels.update(channel.username, last_update_check=dt.datetime.utcnow())
+            await uow.commit()
