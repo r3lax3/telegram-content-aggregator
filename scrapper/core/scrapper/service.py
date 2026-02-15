@@ -107,7 +107,7 @@ class ScrapperService:
 
     async def _save_new_posts(self, uow: UnitOfWork, username: str, posts) -> None:
         """Фильтрует и сохраняет только новые посты."""
-        last_post = await uow.posts.get_last_by_channel(username)
+        last_post = await uow.channels.get_last_post(username)
         last_id = last_post.id if last_post else 0
 
         new_posts = [p for p in posts if p.id > last_id]
