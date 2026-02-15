@@ -54,7 +54,7 @@ async def main():
         corutines.append(worker.run())
 
     if settings.ENABLE_API:
-        corutines.append(run_api())
+        corutines.append(run_api(dishka))
 
     if settings.ENABLE_EVENT_CONSUMER:
         consumer = await dishka.get(EventConsumer)

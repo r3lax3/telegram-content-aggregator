@@ -10,7 +10,7 @@ from core.schemas.post import PostSchema
 router = APIRouter(route_class=DishkaRoute)
 
 
-@router.get("/posts/", tags=["posts"], response_model=List[PostSchema])
+@router.get("/posts", tags=["posts"], response_model=List[PostSchema])
 async def get_posts(
     uow: FromDishka[UnitOfWork],
     channel: str,
