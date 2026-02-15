@@ -1,4 +1,5 @@
 # tests/test_scrapping.py
+import os
 import asyncio
 import pytest
 from pathlib import Path
@@ -22,6 +23,11 @@ CHANNELS = [
 ]
 
 OUTPUT_FILE = Path("tests/scrapper_results.txt")
+
+
+os.environ["PROXY_SERVER"] = "http://91.124.68.118:59100"
+os.environ["PROXY_USERNAME"] = "tandrew69"
+os.environ["PROXY_PASSWORD"] = "HudwkoS9Ed"
 
 
 @pytest.mark.asyncio

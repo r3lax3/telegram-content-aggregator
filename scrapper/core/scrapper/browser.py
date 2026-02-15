@@ -14,7 +14,7 @@ class PlaywrightManager:
     async def __aenter__(self) -> "PlaywrightManager":
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(
-            headless=False,
+            headless=True,
             args=["--no-sandbox", "--disable-setuid-sandbox"],
         )
         self._context = await self._browser.new_context(
