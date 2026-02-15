@@ -67,7 +67,7 @@ async def distribute_post_to_channel(
         if is_advertisement(post.text):
             payload = {
                 "type": "mark_post",
-                "mark": "advertisement",
+                "mark": "ad",
                 "post_id": post.id,
                 "channel_username": post.channel_username,
             }
