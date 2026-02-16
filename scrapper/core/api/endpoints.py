@@ -17,6 +17,7 @@ async def get_posts(
     limit: int = 100,
     order: Literal["asc", "desc"] = "desc",
     marked: Optional[Literal["used", "ad"]] = None,
+    unmarked: bool = False,
     days_ago: Optional[int] = None,
 ):
     posts = await uow.posts.get_many_with_params(
@@ -24,6 +25,7 @@ async def get_posts(
         limit=limit,
         order=order,
         marked=marked,
+        unmarked=unmarked,
         created_after=datetime.utcnow() - timedelta(days=days_ago) if days_ago else None,
     )
     return posts
