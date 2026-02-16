@@ -44,6 +44,8 @@ class PostRepository:
 
         if marked is not None:
             query = query.filter(Post.mark == marked)
+        else:
+            query = query.filter(Post.mark.is_(None))
 
         if created_after is not None:
             query = query.filter(Post.created_at >= created_after)
