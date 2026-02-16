@@ -40,7 +40,6 @@ async def fetch_latest_posts(
                 "channel": donor_channel,
                 "limit": 20,
                 "order": "desc",
-                "unmarked": "true",
             },
             timeout=aiohttp.ClientTimeout(total=10)
         )

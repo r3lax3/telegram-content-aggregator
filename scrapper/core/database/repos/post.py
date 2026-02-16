@@ -34,7 +34,6 @@ class PostRepository:
         limit: int | None = None,
         order: str = "desc",
         marked: str | None = None,
-        unmarked: bool = False,
         created_after: datetime | None = None,
     ) -> list[Post]:
         query = (
@@ -43,10 +42,10 @@ class PostRepository:
             .filter_by(channel_username=channel_username)
         )
 
-        if unmarked:
-            query = query.filter(Post.mark.is_(None))
-        elif marked is not None:
+        if marked is not None:
             query = query.filter(Post.mark == marked)
+        else:
+            query = query.filter(Post.mark.is_(None))
 
         if created_after is not None:
             query = query.filter(Post.created_at >= created_after)
