@@ -37,12 +37,26 @@ async def distribute_posts_globally(container: AsyncContainer) -> None:
                 settings.SCRAPPER_API_URL, donor_usernames
             )
 
-    for channel_id, posts in result.items():
+    total = len(result)
+    successful = 0
+    failed = 0
+
+    for index, (channel_id, posts) in enumerate(result.items(), start=1):
+        logger.info(f"[{index}/{total}] Рассылка в канал {channel_id}...")
+
         sent = await distribute_post_to_channel(
             container, bot, publisher, channel_id, posts
         )
         if sent:
+            successful += 1
             await asyncio.sleep(40)
+        else:
+            failed += 1
+
+    logger.info(
+        f"Рассылка завершена: {successful} успешно, {failed} с ошибкой "
+        f"(всего каналов: {total})"
+    )
 
 
 async def distribute_post_to_channel(
