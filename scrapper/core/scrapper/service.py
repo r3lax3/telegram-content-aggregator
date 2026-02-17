@@ -88,8 +88,6 @@ class ScrapperService:
                 logger.info(f"[@{username}] HTTP {response.status if response else 'None'}")
                 raise ScrappingError()
 
-            await page.wait_for_timeout(30_000)
-
             title = await page.title()
             if "just a moment" in title.lower() or "checking your browser" in title.lower():
                 logger.info(f"[@{username}] Cloudflare challenge")
@@ -97,6 +95,14 @@ class ScrapperService:
 
             if "429" in title:
                 raise RobotSuspicion()
+
+            try:
+                await page.wait_for_selector(
+                    "div.posts-list.lm-list-container",
+                    timeout=15_000,
+                )
+            except PlaywrightTimeoutError:
+                logger.info(f"[@{username}] Контейнер постов не появился за 15 сек")
 
             html = await page.content()
             logger.info(f"[@{username}] OK, {len(html) // 1024} KB")
