@@ -16,8 +16,14 @@ async def collect_posts_for_channel(
     posts = []
 
     for username in donor_usernames:
-        fetched = await fetch_latest_posts(scrapper_api_url, username)
+        try:
+            fetched = await fetch_latest_posts(scrapper_api_url, username)
+        except Exception as e:
+            logger.error(f"Ошибка при получении постов от @{username}: {e}")
+            continue
+
         if fetched:
+            logger.info(f"@{username}: получено {len(fetched)} постов")
             posts.extend(fetched)
 
     posts = sorted(
