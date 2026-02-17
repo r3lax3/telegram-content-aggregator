@@ -110,7 +110,11 @@ async def distribute_post_to_channel(
             )
 
         except Exception as e:
-            logger.error(f"Ошибка: {e}")
+            logger.error(
+                f"Ошибка при отправке поста {post.id} (@{post.channel_username}) "
+                f"в канал {channel_id}: {e}",
+                exc_info=True,
+            )
             retry_on_error_counter += 1
             if retry_on_error_counter < 3:
                 continue
