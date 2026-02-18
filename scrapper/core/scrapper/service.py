@@ -46,7 +46,7 @@ class ScrapperService:
         """Главный метод — загружает и сохраняет новые посты канала."""
         html = await self._fetch_channel_html(username)
 
-        posts = parse_channel_posts(html, username)
+        posts = await asyncio.to_thread(parse_channel_posts, html, username)
         if not posts:
             logger.info(f"[@{username}] Постов на странице не найдено")
             return
@@ -56,10 +56,10 @@ class ScrapperService:
     async def _fetch_channel_html(self, username: str) -> str:
         """Загружает HTML страницы канала, при необходимости обновляет куки."""
         for attempt in range(2):
-            cookies = self._load_cookies()
+            cookies = await asyncio.to_thread(self._load_cookies)
             if not cookies:
                 await self._regenerate_cookies()
-                cookies = self._load_cookies()
+                cookies = await asyncio.to_thread(self._load_cookies)
 
             try:
                 return await self._try_fetch(username, cookies)
@@ -176,7 +176,7 @@ class ScrapperService:
             await asyncio.sleep(5)
 
             cookies = await self._context.cookies()
-            self._save_cookies(cookies)
+            await asyncio.to_thread(self._save_cookies, cookies)
             logger.info("Cookies успешно обновлены")
 
         finally:
