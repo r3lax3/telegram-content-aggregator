@@ -8,8 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
   PIP_DISABLE_PIP_VERSION_CHECK=1
 
 
-RUN apt-get update && apt-get install -y entr \
-  && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -20,5 +19,4 @@ RUN uv pip install --system --no-cache -r requirements.txt
 
 COPY . .
 
-# Run the application (entr restarts on .py file changes)
-CMD ["sh", "-c", "find . -name '*.py' | entr -r -n python main.py"]
+CMD ["python", "main.py"]

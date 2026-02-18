@@ -15,6 +15,12 @@ from core.exceptions import (
 )
 
 
+_TGSTAT_LINK_PATTERN = re.compile(
+    r'<a\s+href="https?://tgstat\.ru/channel/(@[\w]+)"\s*>\1</a>',
+    re.IGNORECASE,
+)
+
+
 def parse_channel_posts(html: str, channel_username: str) -> List[PostSchema]:
     soup = BeautifulSoup(html, "lxml")
 
@@ -69,11 +75,7 @@ def _parse_text(post: Tag) -> str:
     html_content = post_text_tag.decode_contents()
     html_content = html_content.replace("<br/>", "\n")
 
-    tgstat_link_pattern = re.compile(
-        r'<a\s+href="https?://tgstat\.ru/channel/(@[\w]+)"\s*>\1</a>',
-        re.IGNORECASE,
-    )
-    return tgstat_link_pattern.sub(r"\1", html_content)
+    return _TGSTAT_LINK_PATTERN.sub(r"\1", html_content)
 
 
 def _parse_post_id(post: Tag) -> int:

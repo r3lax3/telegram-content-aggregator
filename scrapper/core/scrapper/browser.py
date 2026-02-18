@@ -25,6 +25,14 @@ class PlaywrightManager:
                 "--disable-default-apps",
                 "--no-first-run",
                 "--disable-translate",
+                "--no-zygote",
+                "--renderer-process-limit=1",
+                "--disable-site-isolation-trials",
+                "--disable-software-rasterizer",
+                "--disable-renderer-backgrounding",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-ipc-flooding-protection",
+                "--disable-component-update",
             ],
         )
         self._context = await self._browser.new_context(

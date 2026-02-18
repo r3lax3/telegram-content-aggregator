@@ -33,7 +33,6 @@ class ScrapperWorker:
 
     async def _process_one(self, scope: AsyncContainer):
         uow = await scope.get(UnitOfWork)
-        service = await scope.get(ScrapperService)
 
         channel = await uow.channels.get_next_channel_to_check()
 
@@ -45,6 +44,8 @@ class ScrapperWorker:
         last_check = channel.last_update_check
         last_check_str = last_check.strftime("%Y-%m-%d %H:%M:%S") if last_check else "никогда"
         logger.info(f"[CHECK] Начинаем проверку @{channel.username} (последняя: {last_check_str})")
+
+        service = await scope.get(ScrapperService)
 
         started = time.monotonic()
         try:
