@@ -48,12 +48,18 @@ class PlaywrightManager:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self._context:
-            await self._context.close()
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        for name, coro in [
+            ("context", self._context.close() if self._context else None),
+            ("browser", self._browser.close() if self._browser else None),
+            ("playwright", self._playwright.stop() if self._playwright else None),
+        ]:
+            if coro is None:
+                continue
+            try:
+                await coro
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Error closing {name}: {e}")
 
     @property
     def context(self) -> BrowserContext:
