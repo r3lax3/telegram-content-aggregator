@@ -20,6 +20,8 @@ async def run_bot(container: AsyncContainer) -> None:
         logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
         await message.answer("Статус - активен.")
 
+    await bot.delete_webhook(drop_pending_updates=True)
+
     me = await bot.me()
     logger.info(f"Запускаю поллинг бота (@{me.username})...")
     await dp.start_polling(bot)
