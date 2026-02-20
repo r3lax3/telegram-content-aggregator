@@ -92,7 +92,7 @@ class ScrapperServiceProvider(Provider):
 
 
 class PlaywrightProvider(Provider):
-    scope = Scope.REQUEST
+    scope = Scope.APP
 
     @provide
     async def get_playwright_manager(self) -> AsyncIterable[PlaywrightManager]:

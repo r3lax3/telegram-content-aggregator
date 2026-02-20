@@ -61,7 +61,11 @@ async def main():
         corutines.append(consumer.run())
 
     logger.info(f"Запускаем {len(corutines)} компонентов")
-    await runner.run(*corutines)
+    try:
+        await runner.run(*corutines)
+    finally:
+        await dishka.close()
+        logger.info("Dishka контейнер закрыт")
 
 
 if __name__ == "__main__":

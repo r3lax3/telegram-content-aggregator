@@ -25,7 +25,6 @@ class PlaywrightManager:
                 "--disable-default-apps",
                 "--no-first-run",
                 "--disable-translate",
-                "--no-zygote",
                 "--renderer-process-limit=1",
                 "--disable-site-isolation-trials",
                 "--disable-software-rasterizer",
