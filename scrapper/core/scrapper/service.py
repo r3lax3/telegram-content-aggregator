@@ -123,7 +123,7 @@ class ScrapperService:
             SCREENSHOTS_DIR.mkdir(exist_ok=True)
             timestamp = dt.datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
             path = SCREENSHOTS_DIR / f"{username}_{timestamp}.png"
-            await page.screenshot(path=str(path), full_page=True)
+            await page.screenshot(path=str(path), timeout=5000)
             logger.info(f"[@{username}] Скриншот сохранён: {path}")
         except Exception as screenshot_err:
             logger.warning(f"[@{username}] Не удалось сохранить скриншот: {screenshot_err}")
