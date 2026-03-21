@@ -78,10 +78,24 @@ def check_env_files(bot_env: dict, scrapper_env: dict) -> tuple[dict, dict]:
     bot_env_path = PROJECT_DIR / "bot.env"
     scrapper_env_path = PROJECT_DIR / "scrapper.env"
 
-    check(bot_env_path.exists(), "bot.env найден", f"bot.env не найден (ожидается: {bot_env_path})")
-    check(scrapper_env_path.exists(), "scrapper.env найден", f"scrapper.env не найден (ожидается: {scrapper_env_path})")
+    if bot_env_path.exists():
+        check(True, "bot.env найден", "")
+    else:
+        check_skip(f"bot.env не найден ({bot_env_path}) — используются переменные окружения")
 
-    return parse_env_file(bot_env_path), parse_env_file(scrapper_env_path)
+    if scrapper_env_path.exists():
+        check(True, "scrapper.env найден", "")
+    else:
+        check_skip(f"scrapper.env не найден ({scrapper_env_path}) — используются переменные окружения")
+
+    # Merge file values with os.environ (env takes precedence for Docker)
+    file_bot = parse_env_file(bot_env_path)
+    file_scrapper = parse_env_file(scrapper_env_path)
+
+    merged_bot = {**file_bot, **{k: v for k, v in os.environ.items() if k in ["BOT_TOKEN", "DATABASE_URL", "RABBITMQ_URL", "SCRAPPER_API_URL"]}}
+    merged_scrapper = {**file_scrapper, **{k: v for k, v in os.environ.items() if k in ["DATABASE_URL", "RABBITMQ_URL", "PROXY_SERVER", "PROXY_USERNAME", "PROXY_PASSWORD"]}}
+
+    return merged_bot, merged_scrapper
 
 
 # ─────────────────────────────────────────────────────────
