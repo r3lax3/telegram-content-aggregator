@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import datetime as dt
 from pathlib import Path
 
 from playwright.async_api import BrowserContext, TimeoutError as PlaywrightTimeoutError
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 COOKIES_PATH = Path("cookies.json")
 TG_SESSION_PATH = Path("tg_acc.session")
+SCREENSHOTS_DIR = Path("debug_screenshots")
 TG_API_ID = 37443963
 TG_API_HASH = "f5092f2f7523d78fb82fbe6ff126bb60"
 
@@ -66,8 +68,8 @@ class ScrapperService:
             except RobotSuspicion:
                 logger.info(f"429 при загрузке @{username}, ждём 60 сек...")
                 await asyncio.sleep(60)
-            except PlaywrightTimeoutError:
-                logger.info(f"Timeout при загрузке @{username}, ждём 60 сек...")
+            except PlaywrightTimeoutError as e:
+                logger.warning(f"Timeout при загрузке @{username}, ждём 60 сек... Причина: {e}")
                 await asyncio.sleep(60)
 
         raise ScrappingError(f"Не удалось загрузить канал @{username}")
@@ -108,8 +110,23 @@ class ScrapperService:
             logger.info(f"[@{username}] OK, {len(html) // 1024} KB")
             return html
 
+        except PlaywrightTimeoutError as e:
+            await self._save_screenshot(page, username)
+            raise e
+
         finally:
             await page.close()
+
+    async def _save_screenshot(self, page, username: str) -> None:
+        """Сохраняет скриншот страницы для диагностики таймаута."""
+        try:
+            SCREENSHOTS_DIR.mkdir(exist_ok=True)
+            timestamp = dt.datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+            path = SCREENSHOTS_DIR / f"{username}_{timestamp}.png"
+            await page.screenshot(path=str(path), full_page=True)
+            logger.info(f"[@{username}] Скриншот сохранён: {path}")
+        except Exception as screenshot_err:
+            logger.warning(f"[@{username}] Не удалось сохранить скриншот: {screenshot_err}")
 
     async def _save_new_posts(self, uow: UnitOfWork, username: str, posts) -> None:
         """Фильтрует и сохраняет только новые посты."""

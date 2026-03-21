@@ -100,7 +100,7 @@ async def distribute_post_to_channel(
         except TelegramBadRequest as e:
             logger.warning(
                 f"Ошибка TelegramBadRequest для канала {channel_id}: {e}. "
-                f"Пост: {post}"
+                f"post_id={post.id}, channel=@{post.channel_username}"
             )
 
         except TelegramForbiddenError as e:
