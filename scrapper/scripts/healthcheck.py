@@ -12,7 +12,6 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse
 
 # Корень проекта (на уровень выше папки scrapper)
 SCRIPT_DIR = Path(__file__).parent
@@ -74,7 +73,7 @@ def check_skip(msg: str):
 # Проверка конфиг-файлов
 # ─────────────────────────────────────────────────────────
 
-def check_env_files(bot_env: dict, scrapper_env: dict) -> tuple[dict, dict]:
+def check_env_files() -> tuple[dict, dict]:
     bot_env_path = PROJECT_DIR / "bot.env"
     scrapper_env_path = PROJECT_DIR / "scrapper.env"
 
@@ -88,12 +87,17 @@ def check_env_files(bot_env: dict, scrapper_env: dict) -> tuple[dict, dict]:
     else:
         check_skip(f"scrapper.env не найден ({scrapper_env_path}) — используются переменные окружения")
 
-    # Merge file values with os.environ (env takes precedence for Docker)
     file_bot = parse_env_file(bot_env_path)
     file_scrapper = parse_env_file(scrapper_env_path)
 
-    merged_bot = {**file_bot, **{k: v for k, v in os.environ.items() if k in ["BOT_TOKEN", "DATABASE_URL", "RABBITMQ_URL", "SCRAPPER_API_URL"]}}
-    merged_scrapper = {**file_scrapper, **{k: v for k, v in os.environ.items() if k in ["DATABASE_URL", "RABBITMQ_URL", "PROXY_SERVER", "PROXY_USERNAME", "PROXY_PASSWORD"]}}
+    merged_bot = {
+        **file_bot,
+        **{k: v for k, v in os.environ.items() if k in ["BOT_TOKEN", "DATABASE_URL", "RABBITMQ_URL", "SCRAPPER_API_URL"]},
+    }
+    merged_scrapper = {
+        **file_scrapper,
+        **{k: v for k, v in os.environ.items() if k in ["DATABASE_URL", "RABBITMQ_URL"]},
+    }
 
     return merged_bot, merged_scrapper
 
@@ -148,159 +152,24 @@ def check_bot_token(bot_env: dict):
 
 
 # ─────────────────────────────────────────────────────────
-# Проверка прокси
+# Проверка t.me/s/ доступности
 # ─────────────────────────────────────────────────────────
 
-def check_proxy(scrapper_env: dict):
-    proxy_server = scrapper_env.get("PROXY_SERVER")
-    if not proxy_server:
-        check_skip("PROXY_SERVER не задан, прокси не используется")
-        return
-
-    proxy_user = scrapper_env.get("PROXY_USERNAME", "")
-    proxy_pass = scrapper_env.get("PROXY_PASSWORD", "")
-
-    parsed = urlparse(proxy_server)
-    if proxy_user:
-        proxy_url = f"{parsed.scheme}://{proxy_user}:{proxy_pass}@{parsed.netloc}"
-    else:
-        proxy_url = proxy_server
-
-    try:
-        proxy_handler = urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
-        if proxy_user:
-            password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-            password_mgr.add_password(None, proxy_server, proxy_user, proxy_pass)
-            auth_handler = urllib.request.ProxyBasicAuthHandler(password_mgr)
-            opener = urllib.request.build_opener(proxy_handler, auth_handler)
-        else:
-            opener = urllib.request.build_opener(proxy_handler)
-
-        req = urllib.request.Request(
-            "https://api.ipify.org?format=json",
-            headers={"User-Agent": "Mozilla/5.0"},
-        )
-        with opener.open(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-        check(True, f"Прокси работает (IP: {data.get('ip')})", "")
-    except Exception as e:
-        check(False, "", f"Прокси недоступен ({proxy_server}): {e}")
-
-
-# ─────────────────────────────────────────────────────────
-# Проверка файлов сессии и кукисов
-# ─────────────────────────────────────────────────────────
-
-def check_session_and_cookies():
-    session_path = SCRAPPER_DIR / "tg_acc.session"
-    cookies_path = SCRAPPER_DIR / "cookies.json"
-
-    check(
-        session_path.exists(),
-        f"tg_acc.session найден",
-        f"tg_acc.session не найден — создайте через: python scripts/create_tg_session.py",
+def check_telegram_preview():
+    url = "https://t.me/s/durov"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"},
     )
-
-    if cookies_path.exists():
-        try:
-            data = json.loads(cookies_path.read_text(encoding="utf-8"))
-            check(isinstance(data, list), "cookies.json найден и валиден", "cookies.json не является списком")
-        except json.JSONDecodeError as e:
-            check(False, "", f"cookies.json невалидный JSON: {e}")
-    else:
-        check(False, "", "cookies.json не найден")
-
-
-# ─────────────────────────────────────────────────────────
-# Проверка tgstat.ru через Playwright
-# ─────────────────────────────────────────────────────────
-
-async def check_tgstat(scrapper_env: dict):
-    global passed, total
-    total += 1
-
     try:
-        from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
-    except ImportError:
-        print(fail("playwright не установлен"))
-        return
-
-    proxy_server = scrapper_env.get("PROXY_SERVER")
-    proxy_user = scrapper_env.get("PROXY_USERNAME")
-    proxy_pass = scrapper_env.get("PROXY_PASSWORD")
-
-    proxy_config = None
-    if proxy_server:
-        proxy_config = {"server": proxy_server}
-        if proxy_user:
-            proxy_config["username"] = proxy_user
-            proxy_config["password"] = proxy_pass
-
-    try:
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-gpu",
-                    "--disable-dev-shm-usage",
-                ],
-            )
-            context = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/135.0.0.0 Safari/537.36"
-                ),
-                proxy=proxy_config,
-            )
-            page = await context.new_page()
-
-            try:
-                response = await page.goto(
-                    "https://tgstat.ru/channel/@durov",
-                    wait_until="domcontentloaded",
-                    timeout=30_000,
-                )
-            except PlaywrightTimeoutError:
-                print(fail("tgstat.ru: таймаут загрузки (30с) — возможно, нет прокси или заблокирован доступ"))
-                await browser.close()
-                return
-
-            title = await page.title()
-
-            if "just a moment" in title.lower() or "checking your browser" in title.lower():
-                print(fail(f"tgstat.ru: Cloudflare challenge — нужны валидные куки или другой прокси"))
-                await browser.close()
-                return
-
-            if response and response.status == 429:
-                print(fail("tgstat.ru: 429 Too Many Requests — превышен лимит запросов"))
-                await browser.close()
-                return
-
-            if response and response.status != 200:
-                print(fail(f"tgstat.ru: HTTP {response.status}"))
-                await browser.close()
-                return
-
-            try:
-                await page.wait_for_selector("div.posts-list.lm-list-container", timeout=10_000)
-                posts = await page.query_selector_all("div.post-container, .post-row, [data-post-id]")
-                count = len(posts)
-                if count > 0:
-                    passed += 1
-                    print(ok(f"tgstat.ru: {count} постов найдено для @durov"))
-                else:
-                    print(fail("tgstat.ru: контейнер постов найден, но постов 0 — возможно, изменилась структура страницы"))
-            except PlaywrightTimeoutError:
-                print(fail("tgstat.ru: страница загрузилась, но контейнер постов не появился — возможно Cloudflare или изменилась структура"))
-
-            await browser.close()
-
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+        if 'tgme_widget_message' in html:
+            check(True, f"t.me/s доступен (получены сообщения с {url})", "")
+        else:
+            check(False, "", f"t.me/s ответил, но сообщений в HTML не нашлось")
     except Exception as e:
-        print(fail(f"tgstat.ru: ошибка при запуске Playwright — {e}"))
+        check(False, "", f"t.me/s недоступен: {e}")
 
 
 # ─────────────────────────────────────────────────────────
@@ -310,7 +179,7 @@ async def check_tgstat(scrapper_env: dict):
 async def main():
     print(f"\n{BOLD}=== Проверка готовности проекта ==={RESET}\n")
 
-    bot_env, scrapper_env = check_env_files({}, {})
+    bot_env, scrapper_env = check_env_files()
     print()
 
     check_env_vars(bot_env, scrapper_env)
@@ -319,13 +188,7 @@ async def main():
     check_bot_token(bot_env)
     print()
 
-    check_proxy(scrapper_env)
-    print()
-
-    check_session_and_cookies()
-    print()
-
-    await check_tgstat(scrapper_env)
+    check_telegram_preview()
     print()
 
     color = GREEN if passed == total else RED

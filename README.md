@@ -11,7 +11,7 @@ Scrapper-сервис периодически собирает посты из 
 - **Python 3.9+** / asyncio
 - **FastAPI** — REST API скраппера
 - **Aiogram 3** — Telegram-бот
-- **Playwright** — headless-браузер для сбора данных
+- **aiohttp + BeautifulSoup** — парсинг публичных превью каналов с `t.me/s/{channel}`
 - **SQLAlchemy 2 + asyncpg** — ORM и асинхронная работа с PostgreSQL
 - **RabbitMQ (aio-pika)** — межсервисное взаимодействие через очередь событий
 - **Dishka** — dependency injection

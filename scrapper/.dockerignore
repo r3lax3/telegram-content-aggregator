@@ -18,10 +18,6 @@ ENV
 *.swp
 *.swo
 
-# Session and credentials (should be mounted as volumes)
-*.session
-cookies.json
-
 # Logs and temp files
 *.log
 error_*.html

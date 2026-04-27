@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class ScrapperWorker:
-    SCRAPPER_DELAY = 45.0  # in seconds
-    SCRAPPER_IDLE_DELAY = 60.0  # in seconds
+    SCRAPPER_DELAY = 60.0  # seconds between requests
+    SCRAPPER_IDLE_DELAY = 60.0  # seconds when no channels are queued
 
     def __init__(self, container: AsyncContainer):
         self.container = container

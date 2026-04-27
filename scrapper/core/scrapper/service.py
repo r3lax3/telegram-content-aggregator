@@ -1,51 +1,30 @@
-import json
-import logging
 import asyncio
-import datetime as dt
-from pathlib import Path
+import logging
 
-from playwright.async_api import BrowserContext, TimeoutError as PlaywrightTimeoutError
-from telethon import TelegramClient, events
+import aiohttp
 
-from core.scrapper.browser import PlaywrightManager
 from core.scrapper.parser import parse_channel_posts
 from core.database.uow import UnitOfWork
-from core.exceptions import (
-    ChannelNotFound,
-    ScrappingError,
-    RobotSuspicion,
-    TelegramSessionNotFound,
-)
+from core.exceptions import ChannelNotFound, ScrappingError
 
 
 logger = logging.getLogger(__name__)
 
 
-COOKIES_PATH = Path("cookies.json")
-TG_SESSION_PATH = Path("tg_acc.session")
-SCREENSHOTS_DIR = Path("debug_screenshots")
-TG_API_ID = 37443963
-TG_API_HASH = "f5092f2f7523d78fb82fbe6ff126bb60"
+CHANNEL_URL_TEMPLATE = "https://t.me/s/{username}"
+REQUEST_TIMEOUT = 30
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/135.0.0.0 Safari/537.36"
+)
 
 
 class ScrapperService:
-    def __init__(self, pw_manager: PlaywrightManager):
-        self._pw_manager = pw_manager
-        self._validate_telegram_session()
-
-    def _validate_telegram_session(self):
-        if not TG_SESSION_PATH.exists():
-            raise TelegramSessionNotFound(
-                f"Telegram session not found at {TG_SESSION_PATH}. "
-                "Run `python scripts/create_tg_session.py` first."
-            )
-
-    @property
-    def _context(self) -> BrowserContext:
-        return self._pw_manager.context
+    def __init__(self):
+        self._timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
 
     async def update_data(self, uow: UnitOfWork, username: str) -> None:
-        """Главный метод — загружает и сохраняет новые посты канала."""
         html = await self._fetch_channel_html(username)
 
         posts = await asyncio.to_thread(parse_channel_posts, html, username)
@@ -56,86 +35,32 @@ class ScrapperService:
         await self._save_new_posts(uow, username, posts)
 
     async def _fetch_channel_html(self, username: str) -> str:
-        """Загружает HTML страницы канала, при необходимости обновляет куки."""
-        for attempt in range(2):
-            cookies = await asyncio.to_thread(self._load_cookies)
-            if not cookies:
-                await self._regenerate_cookies()
-                cookies = await asyncio.to_thread(self._load_cookies)
+        url = CHANNEL_URL_TEMPLATE.format(username=username)
+        headers = {"User-Agent": USER_AGENT}
 
-            try:
-                return await self._try_fetch(username, cookies)
-            except RobotSuspicion:
-                logger.info(f"429 при загрузке @{username}, ждём 60 сек...")
-                await asyncio.sleep(60)
-            except PlaywrightTimeoutError as e:
-                logger.warning(f"Timeout при загрузке @{username}, ждём 60 сек... Причина: {e}")
-                await asyncio.sleep(60)
+        async with aiohttp.ClientSession(timeout=self._timeout) as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 404:
+                    raise ChannelNotFound()
+                if response.status != 200:
+                    raise ScrappingError(
+                        f"[@{username}] HTTP {response.status}"
+                    )
+                html = await response.text()
 
-        raise ScrappingError(f"Не удалось загрузить канал @{username}")
-
-    async def _try_fetch(self, username: str, cookies: list[dict]) -> str:
-        """Одна попытка загрузки HTML."""
-        await self._context.add_cookies(cookies)
-        page = await self._context.new_page()
-
-        try:
-            url = f"https://tgstat.ru/channel/@{username}"
-            response = await page.goto(url, wait_until="domcontentloaded", timeout=40_000)
-
-            if response.status == 404:
-                raise ChannelNotFound()
-
-            if not response or response.status != 200:
-                logger.info(f"[@{username}] HTTP {response.status if response else 'None'}")
-                raise ScrappingError()
-
-            title = await page.title()
-            if "just a moment" in title.lower() or "checking your browser" in title.lower():
-                logger.info(f"[@{username}] Cloudflare challenge")
-                raise ScrappingError()
-
-            if "429" in title:
-                raise RobotSuspicion()
-
-            try:
-                await page.wait_for_selector(
-                    "div.posts-list.lm-list-container",
-                    timeout=15_000,
-                )
-            except PlaywrightTimeoutError:
-                logger.info(f"[@{username}] Контейнер постов не появился за 15 сек")
-
-            html = await page.content()
-            logger.info(f"[@{username}] OK, {len(html) // 1024} KB")
-            return html
-
-        except PlaywrightTimeoutError as e:
-            await self._save_screenshot(page, username)
-            raise e
-
-        finally:
-            await page.close()
-
-    async def _save_screenshot(self, page, username: str) -> None:
-        """Сохраняет скриншот страницы для диагностики таймаута."""
-        try:
-            SCREENSHOTS_DIR.mkdir(exist_ok=True)
-            timestamp = dt.datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-            path = SCREENSHOTS_DIR / f"{username}_{timestamp}.png"
-            await page.screenshot(path=str(path), timeout=5000)
-            logger.info(f"[@{username}] Скриншот сохранён: {path}")
-        except Exception as screenshot_err:
-            logger.warning(f"[@{username}] Не удалось сохранить скриншот: {screenshot_err}")
+        logger.info(f"[@{username}] OK, {len(html) // 1024} KB")
+        return html
 
     async def _save_new_posts(self, uow: UnitOfWork, username: str, posts) -> None:
-        """Фильтрует и сохраняет только новые посты."""
         last_post = await uow.channels.get_last_post(username)
         last_id = last_post.id if last_post else 0
 
         new_posts = [p for p in posts if p.id > last_id]
         if not new_posts:
-            logger.info(f"[@{username}] Новых постов нет (всего на странице: {len(posts)}, last_id: {last_id})")
+            logger.info(
+                f"[@{username}] Новых постов нет "
+                f"(всего на странице: {len(posts)}, last_id: {last_id})"
+            )
             return
 
         for post_dto in new_posts:
@@ -154,66 +79,3 @@ class ScrapperService:
                 )
 
         logger.info(f"[@{username}] Сохранено {len(new_posts)} новых постов")
-
-    def _load_cookies(self) -> list[dict]:
-        if not COOKIES_PATH.exists():
-            return []
-
-        with open(COOKIES_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    def _save_cookies(self, cookies: list[dict]) -> None:
-        with open(COOKIES_PATH, "w", encoding="utf-8") as f:
-            json.dump(cookies, f, indent=2, ensure_ascii=False)
-
-    async def _regenerate_cookies(self) -> None:
-        """Авторизация на tgstat.ru через Telegram бота."""
-        logger.info("Обновление cookies через Telegram...")
-
-        page = await self._context.new_page()
-        try:
-            await page.goto("https://tgstat.ru", timeout=40_000, wait_until="domcontentloaded")
-            await page.wait_for_selector("a:has-text('Вход на сайт')", timeout=30_000)
-
-            await page.click("a:has-text('Вход на сайт')")
-            await page.wait_for_selector("a.auth-btn")
-
-            auth_btn = await page.query_selector("a.auth-btn")
-            auth_code = await auth_btn.get_attribute("data-telegram-auth-button")
-            logger.info(f"Код авторизации: {auth_code}")
-
-            await auth_btn.click()
-            await asyncio.sleep(3)
-
-            # закрываем новую вкладку если открылась
-            if len(self._context.pages) > 1:
-                await self._context.pages[-1].close()
-
-            await self._authorize_via_telegram(auth_code)
-            await asyncio.sleep(5)
-
-            cookies = await self._context.cookies()
-            await asyncio.to_thread(self._save_cookies, cookies)
-            logger.info("Cookies успешно обновлены")
-
-        finally:
-            await page.close()
-
-    async def _authorize_via_telegram(self, auth_code: str) -> None:
-        """Отправляет код боту и нажимает кнопку авторизации."""
-        client = TelegramClient("tg_acc", TG_API_ID, TG_API_HASH)
-        authorized = asyncio.Event()
-
-        @client.on(events.NewMessage(from_users="tg_analytics_bot"))
-        async def handler(event):
-            if "Вы входите на сайт" in event.text:
-                await event.click(0)
-                logger.info("Нажали 'Авторизоваться' в Telegram")
-                authorized.set()
-
-        async with client:
-            await client.send_message("tg_analytics_bot", f"/start {auth_code}")
-            try:
-                await asyncio.wait_for(authorized.wait(), timeout=15)
-            except asyncio.TimeoutError:
-                raise ScrappingError("Telegram бот не ответил на запрос авторизации")

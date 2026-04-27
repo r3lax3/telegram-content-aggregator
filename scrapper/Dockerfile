@@ -8,17 +8,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
   PIP_DISABLE_PIP_VERSION_CHECK=1
 
 
-RUN apt-get update && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 COPY requirements.txt .
 
 RUN pip install --no-cache-dir uv
 RUN uv pip install --system --no-cache -r requirements.txt
-
-RUN playwright install-deps
-RUN playwright install chromium
 
 COPY . .
 

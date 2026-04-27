@@ -122,7 +122,7 @@ async def distribute_post_to_channel(
         else:
             logger.info(
                 f"Пост успешно отправлен в канал {channel_id}:\n"
-                f"https://tgstat.ru/channel/@{post.channel_username}/{post.id}"
+                f"https://t.me/{post.channel_username}/{post.id}"
             )
 
             payload = {

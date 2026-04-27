@@ -1,8 +1,5 @@
 from typing import List, AsyncIterable
 
-from dishka import Provider, Scope
-from core.config.settings import Settings
-
 from dishka import (
     Provider,
     Scope,
@@ -23,7 +20,6 @@ from core.config.settings import Settings
 from core.scrapper.worker import ScrapperWorker
 from core.scrapper.service import ScrapperService
 from core.database.uow import UnitOfWork
-from core.scrapper.browser import PlaywrightManager
 from core.event_consumer import EventConsumer
 
 
@@ -87,17 +83,8 @@ class ScrapperServiceProvider(Provider):
     scope = Scope.REQUEST
 
     @provide
-    def get_scrapper_service(self, pw_manager: PlaywrightManager) -> ScrapperService:
-        return ScrapperService(pw_manager)
-
-
-class PlaywrightProvider(Provider):
-    scope = Scope.APP
-
-    @provide
-    async def get_playwright_manager(self) -> AsyncIterable[PlaywrightManager]:
-        async with PlaywrightManager() as pm:
-            yield pm
+    def get_scrapper_service(self) -> ScrapperService:
+        return ScrapperService()
 
 
 class EventConsumerProvider(Provider):
@@ -116,7 +103,6 @@ def get_all_dishka_providers() -> List[Provider]:
         UOWProvider(),
         WorkerProvider(),
         ScrapperServiceProvider(),
-        PlaywrightProvider(),
         EventConsumerProvider(),
     ]
 
