@@ -1,4 +1,3 @@
-# core/scrapper/parser.py
 import datetime as dt
 import re
 from typing import List
@@ -7,122 +6,141 @@ from bs4 import BeautifulSoup, Tag
 
 from core.dto import MediaSchema, PostSchema
 from core.enums import MediaTypeEnum
-from core.exceptions import (
-    PostIdNotFoundException,
-    PostsListNotFoundException,
-    VideoUnavailableException,
-    MediaUnavailableException,
-)
 
 
-_TGSTAT_LINK_PATTERN = re.compile(
-    r'<a\s+href="https?://tgstat\.ru/channel/(@[\w]+)"\s*>\1</a>',
+_BG_IMAGE_RE = re.compile(
+    r"background-image\s*:\s*url\(['\"]?([^'\")]+)['\"]?\)",
     re.IGNORECASE,
 )
+_ALLOWED_TAG_ATTRS = {
+    "a": {"href"},
+    "b": set(),
+    "strong": set(),
+    "i": set(),
+    "em": set(),
+    "u": set(),
+    "s": set(),
+    "tg-emoji": {"emoji-id"},
+    "code": set(),
+    "pre": set(),
+    "blockquote": set(),
+}
+_UNWRAP_TAGS = ("picture", "source", "canvas", "video", "img", "span", "div")
 
 
 def parse_channel_posts(html: str, channel_username: str) -> List[PostSchema]:
     soup = BeautifulSoup(html, "lxml")
 
-    posts_parent_div = soup.find("div", class_="posts-list lm-list-container")
-    if not posts_parent_div:
-        raise PostsListNotFoundException()
-
-    post_tags = posts_parent_div.find_all(
-        "div", class_="card card-body border p-2 px-1 px-sm-3 post-container"
-    )
-
-    if not post_tags:
+    message_tags = soup.select("div.tgme_widget_message[data-post]")
+    if not message_tags:
         return []
 
-    parsed_posts = []
-    for post_tag in post_tags:
+    posts: List[PostSchema] = []
+    for tag in message_tags:
         try:
-            post = _parse_single_post(post_tag, channel_username)
-            if post:
-                parsed_posts.append(post)
-        except (VideoUnavailableException, MediaUnavailableException):
-            continue
+            post = _parse_single_post(tag, channel_username)
         except Exception:
             continue
+        if post:
+            posts.append(post)
 
-    return sorted(parsed_posts, key=lambda p: p.id, reverse=True)
+    return sorted(posts, key=lambda p: p.id, reverse=True)
 
 
 def _parse_single_post(post: Tag, channel_username: str) -> PostSchema | None:
-    text = _parse_text(post)
-    if not text:
+    post_id = _parse_post_id(post)
+    if post_id is None:
         return None
 
-    post_id = _parse_post_id(post)
-    created_at = _parse_created_at(post)
+    text = _parse_text(post)
     medias = _parse_medias(post)
+
+    if not text and not medias:
+        return None
 
     return PostSchema(
         id=post_id,
         channel_username=channel_username,
         text=text,
-        created_at=created_at,
+        created_at=_parse_created_at(post),
         medias=medias,
     )
 
 
-def _parse_text(post: Tag) -> str:
-    post_text_tag = post.select_one(".post-text")
-    if not post_text_tag:
-        return ""
-
-    html_content = post_text_tag.decode_contents()
-    html_content = html_content.replace("<br/>", "\n")
-
-    return _TGSTAT_LINK_PATTERN.sub(r"\1", html_content)
-
-
-def _parse_post_id(post: Tag) -> int:
-    share_element = post.select_one('a[data-src*="/share"]')
-    if not share_element or "data-src" not in share_element.attrs:
-        raise PostIdNotFoundException()
-
-    share_link = share_element["data-src"]
-    if isinstance(share_link, list):
-        share_link = share_link[0]
-
-    return int(share_link.split("/")[3])
+def _parse_post_id(post: Tag) -> int | None:
+    data_post = post.get("data-post")
+    if not data_post or "/" not in data_post:
+        return None
+    _, _, post_id_str = data_post.partition("/")
+    if not post_id_str.isdigit():
+        return None
+    return int(post_id_str)
 
 
 def _parse_created_at(post: Tag) -> dt.datetime:
-    tag_small = post.select_one(".media-body.text-truncate small")
-    if not tag_small:
-        raise ValueError("не обнаружена дата создания поста")
+    time_el = post.select_one("time[datetime]")
+    if not time_el or not time_el.get("datetime"):
+        return dt.datetime.utcnow()
 
-    text = tag_small.text.strip()
+    parsed = dt.datetime.fromisoformat(time_el["datetime"])
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    return parsed
 
-    try:
-        return dt.datetime.strptime(text, "%d %b %Y, %H:%M")
-    except ValueError:
-        created = dt.datetime.strptime(text, "%d %b, %H:%M")
-        return created.replace(year=dt.datetime.now().year)
+
+def _parse_text(post: Tag) -> str:
+    text_tag = post.select_one(".tgme_widget_message_text")
+    if not text_tag:
+        return ""
+
+    fragment = BeautifulSoup(str(text_tag), "lxml")
+    container = fragment.select_one(".tgme_widget_message_text")
+    if not container:
+        return ""
+
+    for emoji in container.find_all("tg-emoji"):
+        emoji_char = ""
+        emoji_i = emoji.find("i", class_="emoji")
+        if emoji_i:
+            emoji_char = emoji_i.get_text(strip=True)
+        if not emoji_char:
+            emoji_char = emoji.get_text(strip=True)
+        emoji.clear()
+        if emoji_char:
+            emoji.append(emoji_char)
+
+    for br in container.find_all("br"):
+        br.replace_with("\n")
+
+    for tag_name in _UNWRAP_TAGS:
+        for el in list(container.find_all(tag_name)):
+            el.unwrap()
+
+    for el in container.find_all(True):
+        allowed = _ALLOWED_TAG_ATTRS.get(el.name)
+        if allowed is None:
+            el.unwrap()
+            continue
+        el.attrs = {k: v for k, v in el.attrs.items() if k in allowed}
+
+    return container.decode_contents().strip()
 
 
 def _parse_medias(post: Tag) -> List[MediaSchema]:
-    # проверки на недоступный контент
-    unavailable = post.find("div", class_="thumbnail-text")
-    if unavailable and "Видео недоступно для предпросмотра" in unavailable.get_text(strip=True):
-        raise VideoUnavailableException()
+    photo_wraps = post.select(".tgme_widget_message_photo_wrap")
+    video_players = post.select(".tgme_widget_message_video_player")
 
-    if post.find("div", class_="carousel-inner"):
-        raise MediaUnavailableException()
+    if len(photo_wraps) + len(video_players) != 1:
+        return []
 
-    medias = []
+    if video_players:
+        video_el = video_players[0].select_one("video[src]")
+        if video_el and video_el.get("src"):
+            return [MediaSchema(type=MediaTypeEnum.VIDEO, url=video_el["src"])]
+        return []
 
-    # видео
-    video_el = post.select_one(".wrapper-video-video source")
-    if video_el and video_el.get("src"):
-        medias.append(MediaSchema(type=MediaTypeEnum.VIDEO, url=video_el["src"]))  # type: ignore
-
-    # картинка
-    img_el = post.select_one("img.post-img-img")
-    if img_el and img_el.get("src"):
-        medias.append(MediaSchema(type=MediaTypeEnum.IMAGE, url=img_el["src"]))  # type: ignore
-
-    return medias
+    style = photo_wraps[0].get("style", "")
+    match = _BG_IMAGE_RE.search(style)
+    if match:
+        return [MediaSchema(type=MediaTypeEnum.IMAGE, url=match.group(1))]
+    return []

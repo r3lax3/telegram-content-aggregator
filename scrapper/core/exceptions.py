@@ -8,11 +8,6 @@ class ChannelNotFound(ScrappingError):
     pass
 
 
-class RobotSuspicion(ScrappingError):
-    """Raised when detected as a robot (429)."""
-    pass
-
-
 class ParsingError(ScrappingError):
     """Raised when HTML parsing fails."""
     pass
@@ -30,21 +25,4 @@ class PostIdNotFoundException(ParsingError):
 
 class PostTextNotFoundException(ParsingError):
     """Raised when post text cannot be extracted."""
-    pass
-
-
-class VideoUnavailableException(ScrappingError):
-    """Raised when video is unavailable for preview."""
-    pass
-
-
-class MediaUnavailableException(ScrappingError):
-    """Raised when media (e.g., carousel) is unavailable."""
-    pass
-
-
-class RobotSuspition(ScrappingError):
-    pass
-
-class TelegramSessionNotFound(Exception):
     pass
