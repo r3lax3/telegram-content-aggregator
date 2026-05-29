@@ -1,6 +1,7 @@
 import logging
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from dishka import AsyncContainer
 
 from core.enums import MediaType
@@ -38,23 +39,37 @@ async def send_post_to_channel(
     media = post.medias[0]
     url = media.url
 
-    match media.type:
-        case MediaType.IMAGE:
-            await bot.send_photo(
-                chat_id=channel_id,
-                photo=url,
-                caption=text,
-            )
+    try:
+        match media.type:
+            case MediaType.IMAGE:
+                await bot.send_photo(
+                    chat_id=channel_id,
+                    photo=url,
+                    caption=text,
+                )
 
-        case MediaType.VIDEO:
-            await bot.send_video(
-                chat_id=channel_id,
-                video=url,
-                caption=text
-            )
-        case _:
-            logger.error(f"Неизвестный тип медиа: {media.type} для канала {channel_id}")
-            raise ValueError(f"Unsupported media type: {media.type}")
+            case MediaType.VIDEO:
+                await bot.send_video(
+                    chat_id=channel_id,
+                    video=url,
+                    caption=text
+                )
+            case _:
+                logger.error(f"Неизвестный тип медиа: {media.type} для канала {channel_id}")
+                raise ValueError(f"Unsupported media type: {media.type}")
+
+    except TelegramBadRequest as e:
+        if "failed to get HTTP URL content" not in str(e) or not text:
+            raise
+        logger.warning(
+            f"Медиа-URL недоступен для поста {post.id} (@{post.channel_username}), "
+            f"отправляю только текст в канал {channel_id}"
+        )
+        await bot.send_message(
+            chat_id=channel_id,
+            text=text,
+            disable_web_page_preview=True,
+        )
 
     logger.info("Сообщение отправлено.")
 
