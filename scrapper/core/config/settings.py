@@ -2,9 +2,6 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str
-    RABBITMQ_URL: str
-
-    ENABLE_API: bool
-    ENABLE_EVENT_CONSUMER: bool
-    ENABLE_SCRAPPER_LOOP: bool
+    # The scrapper is now a stateless real-time service: it owns no database
+    # and no message queue, so no connection settings are required here.
+    pass

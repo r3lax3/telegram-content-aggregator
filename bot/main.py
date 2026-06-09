@@ -11,6 +11,7 @@ from core.config.settings import Settings
 from core.database.models.base import Base
 import core.database.models  # noqa: F401 — регистрация моделей в Base.metadata
 from core.distribution.scheduler import DistributionScheduler
+from core.distribution.distributor import resume_incomplete_cycle
 from core.bot.handlers import run_bot
 
 from main_factory import get_all_dishka_providers
@@ -46,6 +47,8 @@ async def main():
     if settings.ENABLE_SCHEDULER:
         scheduler = DistributionScheduler(dishka)
         scheduler.start()
+        # Resume a run that a restart interrupted before its next slot.
+        coroutines.append(resume_incomplete_cycle(dishka))
 
     if settings.ENABLE_BOT:
         coroutines.append(run_bot(dishka))

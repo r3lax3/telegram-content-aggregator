@@ -20,7 +20,6 @@ from aiogram.client.default import DefaultBotProperties
 
 from core.config.settings import Settings
 from core.database.uow import UnitOfWork
-from core.messaging.rabbitmq import RabbitMQPublisher
 
 
 class ConfigProvider(Provider):
@@ -82,17 +81,6 @@ class BotProvider(Provider):
         )
 
 
-class RabbitMQProvider(Provider):
-    scope = Scope.APP
-
-    @provide
-    async def get_publisher(self, settings: Settings) -> AsyncIterable[RabbitMQPublisher]:
-        publisher = RabbitMQPublisher(settings.RABBITMQ_URL)
-        await publisher.connect()
-        yield publisher
-        await publisher.close()
-
-
 def get_all_dishka_providers() -> List[Provider]:
     return [
         ConfigProvider(),
@@ -100,5 +88,4 @@ def get_all_dishka_providers() -> List[Provider]:
         SessionProvider(),
         UOWProvider(),
         BotProvider(),
-        RabbitMQProvider(),
     ]

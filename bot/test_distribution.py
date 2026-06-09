@@ -25,7 +25,6 @@ from core.config.settings import Settings
 from core.database.models.base import Base
 import core.database.models  # noqa: F401
 from core.database.uow import UnitOfWork
-from core.messaging.rabbitmq import RabbitMQPublisher
 from core.distribution.distributor import (
     distribute_posts_globally,
     distribute_post_to_channel,
@@ -59,7 +58,6 @@ async def run_global(container) -> None:
 async def run_for_channel(container, channel_id: int, loop: bool, interval: int) -> None:
     """Запуск рассылки в конкретный канал."""
     bot = await container.get(Bot)
-    publisher = await container.get(RabbitMQPublisher)
     settings = await container.get(Settings)
 
     me = await bot.get_me()
@@ -89,7 +87,7 @@ async def run_for_channel(container, channel_id: int, loop: bool, interval: int)
         logger.info(f"Собрано {len(posts)} постов.")
 
         await distribute_post_to_channel(
-            container, bot, publisher, channel_id, posts
+            container, bot, channel_id, posts
         )
         logger.info("Рассылка в канал завершена.")
 

@@ -1,29 +1,30 @@
-from typing import List, Literal, Optional
-from datetime import datetime, timedelta
+from typing import List, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from dishka.integrations.fastapi import DishkaRoute, FromDishka
 
-from core.database.uow import UnitOfWork
-from core.schemas.post import PostSchema
+from core.dto import PostSchema
+from core.scrapper.service import ScrapperService
+from core.exceptions import ChannelNotFound, ScrappingError
 
 router = APIRouter(route_class=DishkaRoute)
 
 
 @router.get("/posts", tags=["posts"], response_model=List[PostSchema])
 async def get_posts(
-    uow: FromDishka[UnitOfWork],
+    service: FromDishka[ScrapperService],
     channel: str,
-    limit: int = 100,
+    limit: int = 20,
     order: Literal["asc", "desc"] = "desc",
-    marked: Optional[Literal["used", "ad"]] = None,
-    days_ago: Optional[int] = None,
 ):
-    posts = await uow.posts.get_many_with_params(
-        channel_username=channel,
-        limit=limit,
-        order=order,
-        marked=marked,
-        created_after=datetime.utcnow() - timedelta(days=days_ago) if days_ago else None,
-    )
-    return posts
+    """Fetch a donor channel's latest posts in real time.
+
+    Posts are scraped on every request, so media URLs are fresh and usable
+    by the caller immediately.
+    """
+    try:
+        return await service.fetch_posts(channel, limit=limit, order=order)
+    except ChannelNotFound:
+        raise HTTPException(status_code=404, detail=f"Channel @{channel} not found")
+    except ScrappingError as e:
+        raise HTTPException(status_code=502, detail=str(e))

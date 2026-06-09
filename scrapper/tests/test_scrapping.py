@@ -51,14 +51,21 @@ NO_DATA_POST_HTML = """
 """
 
 
-def test_parse_photo_group_skips_media():
+def test_parse_photo_group_keeps_all_media_in_order():
     posts = parse_channel_posts(PHOTO_GROUP_HTML, "abakan_smi")
     assert len(posts) == 1
 
     post = posts[0]
     assert post.id == 20095
     assert post.channel_username == "abakan_smi"
-    assert post.medias == []
+    assert [m.type for m in post.medias] == [
+        MediaTypeEnum.IMAGE,
+        MediaTypeEnum.IMAGE,
+    ]
+    assert [m.url for m in post.medias] == [
+        "https://cdn4.telesco.pe/file/photo1.jpg",
+        "https://cdn4.telesco.pe/file/photo2.jpg",
+    ]
     assert "<b>Заголовок</b>" in post.text
     assert "\n\nТекст поста." in post.text
     assert "❗️" in post.text

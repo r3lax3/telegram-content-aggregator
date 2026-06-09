@@ -92,11 +92,11 @@ def check_env_files() -> tuple[dict, dict]:
 
     merged_bot = {
         **file_bot,
-        **{k: v for k, v in os.environ.items() if k in ["BOT_TOKEN", "DATABASE_URL", "RABBITMQ_URL", "SCRAPPER_API_URL"]},
+        **{k: v for k, v in os.environ.items() if k in ["BOT_TOKEN", "DATABASE_URL", "SCRAPPER_API_URL"]},
     }
     merged_scrapper = {
         **file_scrapper,
-        **{k: v for k, v in os.environ.items() if k in ["DATABASE_URL", "RABBITMQ_URL"]},
+        **{k: v for k, v in os.environ.items()},
     }
 
     return merged_bot, merged_scrapper
@@ -107,22 +107,17 @@ def check_env_files() -> tuple[dict, dict]:
 # ─────────────────────────────────────────────────────────
 
 def check_env_vars(bot_env: dict, scrapper_env: dict):
-    bot_required = ["BOT_TOKEN", "DATABASE_URL", "RABBITMQ_URL", "SCRAPPER_API_URL"]
-    scrapper_required = ["DATABASE_URL", "RABBITMQ_URL"]
+    bot_required = ["BOT_TOKEN", "DATABASE_URL", "SCRAPPER_API_URL"]
 
     bot_missing = [k for k in bot_required if not bot_env.get(k)]
-    scrapper_missing = [k for k in scrapper_required if not scrapper_env.get(k)]
 
     check(
         not bot_missing,
         "Все обязательные переменные бота заданы",
         f"В bot.env не заданы: {', '.join(bot_missing)}",
     )
-    check(
-        not scrapper_missing,
-        "Все обязательные переменные скрапера заданы",
-        f"В scrapper.env не заданы: {', '.join(scrapper_missing)}",
-    )
+    # Скраппер теперь stateless и не требует переменных окружения.
+    check(True, "Скраппер не требует обязательных переменных (stateless)", "")
 
 
 # ─────────────────────────────────────────────────────────
