@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
@@ -8,7 +10,6 @@ from dishka import AsyncContainer
 from core.schemas.post import PostSchema
 from core.config.settings import Settings
 from core.database.uow import UnitOfWork
-from core.messaging.rabbitmq import RabbitMQPublisher
 from core.distribution.content import delete_bottom_links
 
 from .collector import collect_posts_for_channel
@@ -19,53 +20,121 @@ from .sender import send_post_to_channel
 logger = logging.getLogger(__name__)
 
 
-async def distribute_posts_globally(container: AsyncContainer) -> None:
+SLOT_TZ = ZoneInfo("Europe/Moscow")
+POST_INTERVAL = 40  # seconds between successful sends
+# A cycle older than this is considered stale and is not resumed on startup
+# (the next slot is only 4 hours away anyway).
+RESUME_WINDOW = timedelta(hours=4)
+
+
+def current_slot() -> str:
+    """Identifier for the current scheduling slot, e.g. ``2026-06-09-08``."""
+    return datetime.now(SLOT_TZ).strftime("%Y-%m-%d-%H")
+
+
+async def resume_incomplete_cycle(container: AsyncContainer) -> None:
+    """On startup, continue a run that a restart interrupted mid-cycle."""
+    async with container() as req:
+        uow = await req.get(UnitOfWork)
+        not_before = datetime.utcnow() - RESUME_WINDOW
+        cycle = await uow.cycles.get_incomplete_since(not_before)
+
+    if cycle is None:
+        return
+
+    # The current slot belongs to the scheduler's cron job; only resume an
+    # earlier slot that an interrupted run left unfinished.
+    if cycle.slot == current_slot():
+        return
+
+    logger.info(f"Найден незавершённый цикл {cycle.slot}, возобновляю...")
+    await distribute_posts_globally(container, slot=cycle.slot)
+
+
+async def distribute_posts_globally(
+    container: AsyncContainer,
+    slot: str | None = None,
+) -> None:
     bot = await container.get(Bot)
-    publisher = await container.get(RabbitMQPublisher)
     settings = await container.get(Settings)
 
-    result = {}
+    if slot is None:
+        slot = current_slot()
 
     async with container() as req:
         uow = await req.get(UnitOfWork)
         channels = await uow.channels.get_many()
+        channel_ids = [c.id for c in channels]
+        await uow.cycles.create_if_absent(slot, channel_ids)
+        await uow.commit()
+        pending = await uow.cycles.get_pending_channel_ids(slot)
 
-        for channel in channels:
-            donors = await uow.donors.get_many(channel_id=channel.id)
-            donor_usernames = [d.username for d in donors]
-            result[channel.id] = await collect_posts_for_channel(
-                settings.SCRAPPER_API_URL, donor_usernames
-            )
+    total = len(channel_ids)
+    logger.info(
+        f"[cycle {slot}] каналов всего: {total}, осталось обработать: {len(pending)}"
+    )
 
-    total = len(result)
     successful = 0
     failed = 0
 
-    for index, (channel_id, posts) in enumerate(result.items(), start=1):
-        logger.info(f"[{index}/{total}] Рассылка в канал {channel_id}...")
+    for index, channel_id in enumerate(pending, start=1):
+        logger.info(f"[cycle {slot}] [{index}/{len(pending)}] Рассылка в канал {channel_id}...")
 
-        sent = await distribute_post_to_channel(
-            container, bot, publisher, channel_id, posts
-        )
+        sent = await _process_channel(container, bot, settings, channel_id)
+
+        async with container() as req:
+            uow = await req.get(UnitOfWork)
+            await uow.cycles.mark_channel_done(slot, channel_id)
+            await uow.commit()
+
         if sent:
             successful += 1
-            await asyncio.sleep(40)
+            await asyncio.sleep(POST_INTERVAL)
         else:
             failed += 1
 
+    async with container() as req:
+        uow = await req.get(UnitOfWork)
+        await uow.cycles.complete(slot)
+        await uow.commit()
+
     logger.info(
-        f"Рассылка завершена: {successful} успешно, {failed} с ошибкой "
-        f"(всего каналов: {total})"
+        f"[cycle {slot}] завершён: {successful} успешно, {failed} без отправки "
+        f"(каналов в этом проходе: {len(pending)})"
     )
+
+
+async def _process_channel(
+    container: AsyncContainer,
+    bot: Bot,
+    settings: Settings,
+    channel_id: int,
+) -> bool:
+    async with container() as req:
+        uow = await req.get(UnitOfWork)
+        donors = await uow.donors.get_many(channel_id=channel_id)
+        donor_usernames = [d.username for d in donors]
+        marked = await uow.used_posts.get_marked_keys(donor_usernames)
+
+    if not donor_usernames:
+        logger.warning(f"Канал {channel_id}: нет доноров, пропускаю")
+        return False
+
+    # Fetched in real time so media URLs are seconds old when we post them.
+    posts = await collect_posts_for_channel(
+        settings.SCRAPPER_API_URL, donor_usernames
+    )
+    posts = [p for p in posts if (p.channel_username, p.id) not in marked]
+
+    return await distribute_post_to_channel(container, bot, channel_id, posts)
 
 
 async def distribute_post_to_channel(
     container: AsyncContainer,
     bot: Bot,
-    publisher: RabbitMQPublisher,
     channel_id: int,
     posts: list[PostSchema],
-) -> bool | None:
+) -> bool:
     retry_on_error_counter = 0
 
     for post in posts:
@@ -79,19 +148,11 @@ async def distribute_post_to_channel(
                 continue
 
         if is_advertisement(post.text):
-            payload = {
-                "type": "mark_post",
-                "mark": "ad",
-                "post_id": post.id,
-                "channel_username": post.channel_username,
-            }
-            await publisher.publish_event(payload)
-
+            await _mark_post(container, post.channel_username, post.id, "ad")
             logger.info(
                 f"Пост {post.id} из канала @{post.channel_username} "
                 f"помечен как реклама и не будет отправлен в {channel_id}."
             )
-
             continue
 
         try:
@@ -108,6 +169,7 @@ async def distribute_post_to_channel(
                 f"Ошибка TelegramForbiddenError для канала {channel_id}: {e}. "
                 "У бота недостаточно прав для отправки сообщений в канал."
             )
+            return False
 
         except Exception as e:
             logger.error(
@@ -124,18 +186,23 @@ async def distribute_post_to_channel(
                 f"Пост успешно отправлен в канал {channel_id}:\n"
                 f"https://t.me/{post.channel_username}/{post.id}"
             )
-
-            payload = {
-                "type": "mark_post",
-                "mark": "used",
-                "post_id": post.id,
-                "channel_username": post.channel_username,
-            }
-            await publisher.publish_event(payload)
+            await _mark_post(container, post.channel_username, post.id, "used")
             return True
 
-    else:
-        logger.error(
-            f"В канале {channel_id} не осталось ни одного подходящего поста для публикации. "
-            f"Возможные причины: весь контент — реклама или он уже был опубликован."
-        )
+    logger.error(
+        f"В канале {channel_id} не осталось ни одного подходящего поста для публикации. "
+        f"Возможные причины: весь контент — реклама или он уже был опубликован."
+    )
+    return False
+
+
+async def _mark_post(
+    container: AsyncContainer,
+    donor_username: str,
+    post_id: int,
+    mark: str,
+) -> None:
+    async with container() as req:
+        uow = await req.get(UnitOfWork)
+        await uow.used_posts.add(donor_username, post_id, mark)
+        await uow.commit()

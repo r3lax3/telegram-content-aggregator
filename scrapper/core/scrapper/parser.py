@@ -127,20 +127,29 @@ def _parse_text(post: Tag) -> str:
 
 
 def _parse_medias(post: Tag) -> List[MediaSchema]:
-    photo_wraps = post.select(".tgme_widget_message_photo_wrap")
-    video_players = post.select(".tgme_widget_message_video_player")
+    # Photos and videos are collected in document order so that albums
+    # (grouped media) keep the same ordering they have in the source post.
+    media_elements = post.select(
+        ".tgme_widget_message_photo_wrap, .tgme_widget_message_video_player"
+    )
 
-    if len(photo_wraps) + len(video_players) != 1:
-        return []
+    medias: List[MediaSchema] = []
+    for el in media_elements:
+        classes = el.get("class", []) or []
 
-    if video_players:
-        video_el = video_players[0].select_one("video[src]")
-        if video_el and video_el.get("src"):
-            return [MediaSchema(type=MediaTypeEnum.VIDEO, url=video_el["src"])]
-        return []
+        if "tgme_widget_message_video_player" in classes:
+            video_el = el.select_one("video[src]")
+            if video_el and video_el.get("src"):
+                medias.append(
+                    MediaSchema(type=MediaTypeEnum.VIDEO, url=video_el["src"])
+                )
+            continue
 
-    style = photo_wraps[0].get("style", "")
-    match = _BG_IMAGE_RE.search(style)
-    if match:
-        return [MediaSchema(type=MediaTypeEnum.IMAGE, url=match.group(1))]
-    return []
+        style = el.get("style", "")
+        match = _BG_IMAGE_RE.search(style)
+        if match:
+            medias.append(
+                MediaSchema(type=MediaTypeEnum.IMAGE, url=match.group(1))
+            )
+
+    return medias
