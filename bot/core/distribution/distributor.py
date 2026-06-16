@@ -27,6 +27,12 @@ POST_INTERVAL = 40  # seconds between successful sends
 # (the next slot is only 4 hours away anyway).
 RESUME_WINDOW = timedelta(hours=4)
 
+# Guards against two distribution runs overlapping. A restart can leave a slow
+# resume still running (40s between sends) when the next cron slot fires; in
+# that case we skip the new run entirely instead of posting the same content
+# twice close together.
+_distribution_lock = asyncio.Lock()
+
 
 def current_slot() -> str:
     """Identifier for the current scheduling slot, e.g. ``2026-06-09-08``."""
@@ -43,16 +49,29 @@ async def resume_incomplete_cycle(container: AsyncContainer) -> None:
     if cycle is None:
         return
 
-    # The current slot belongs to the scheduler's cron job; only resume an
-    # earlier slot that an interrupted run left unfinished.
-    if cycle.slot == current_slot():
-        return
-
     logger.info(f"Найден незавершённый цикл {cycle.slot}, возобновляю...")
     await distribute_posts_globally(container, slot=cycle.slot)
 
 
 async def distribute_posts_globally(
+    container: AsyncContainer,
+    slot: str | None = None,
+) -> None:
+    # locked() + acquire is race-free in a single event loop: acquiring an
+    # uncontended lock does not yield, so no other run can slip in between the
+    # check and the acquire. A second concurrent trigger is skipped, not queued.
+    if _distribution_lock.locked():
+        logger.warning(
+            "Рассылка уже идёт — пропускаю запуск нового цикла, "
+            "чтобы не отправить посты повторно."
+        )
+        return
+
+    async with _distribution_lock:
+        await _run_distribution_cycle(container, slot)
+
+
+async def _run_distribution_cycle(
     container: AsyncContainer,
     slot: str | None = None,
 ) -> None:
