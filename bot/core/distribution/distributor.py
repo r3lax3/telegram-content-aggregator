@@ -10,6 +10,7 @@ from dishka import AsyncContainer
 from core.schemas.post import PostSchema
 from core.config.settings import Settings
 from core.database.uow import UnitOfWork
+from core.exceptions import MediaUnavailableError
 from core.distribution.content import delete_bottom_links
 
 from .collector import collect_posts_for_channel
@@ -157,6 +158,13 @@ async def distribute_post_to_channel(
 
         try:
             await send_post_to_channel(container, bot, channel_id, post)
+
+        except MediaUnavailableError as e:
+            logger.info(
+                f"Пост {post.id} (@{post.channel_username}) пропущен — медиа "
+                f"недоступно: {e}. Беру следующий пост."
+            )
+            continue
 
         except TelegramBadRequest as e:
             logger.warning(

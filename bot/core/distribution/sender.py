@@ -4,14 +4,14 @@ from typing import Awaitable, Callable, TypeVar
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramRetryAfter, TelegramNetworkError
-from aiogram.types import InputMediaPhoto, InputMediaVideo
+from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo
 from dishka import AsyncContainer
 
 from core.enums import MediaType
 from core.schemas.post import PostSchema
-from core.schemas.media import MediaSchema
 from core.database.uow import UnitOfWork
 from .content import prepare_text
+from .media_loader import DownloadedMedia, downloaded_medias
 
 
 logger = logging.getLogger(__name__)
@@ -77,10 +77,16 @@ async def send_post_to_channel(
         logger.info("Сообщение отправлено.")
         return
 
-    if len(post.medias) == 1:
-        await _send_single_media(bot, channel_id, post.medias[0], text)
-    else:
-        await _send_album(bot, channel_id, post.medias, text)
+    # Media is streamed to a temp file and uploaded from disk (instead of
+    # handing Telegram a URL to fetch). This keeps RAM flat and avoids
+    # "failed to get HTTP URL content" errors. If any item can't be fetched
+    # or exceeds the size cap, downloaded_medias raises MediaUnavailableError
+    # and the whole post is skipped upstream.
+    async with downloaded_medias(post.medias) as files:
+        if len(files) == 1:
+            await _send_single_media(bot, channel_id, files[0], text)
+        else:
+            await _send_album(bot, channel_id, files, text)
 
     logger.info("Сообщение отправлено.")
 
@@ -88,7 +94,7 @@ async def send_post_to_channel(
 async def _send_single_media(
     bot: Bot,
     channel_id: int,
-    media: MediaSchema,
+    media: DownloadedMedia,
     caption: str,
 ) -> None:
     match media.type:
@@ -96,7 +102,7 @@ async def _send_single_media(
             await _send_with_retry(
                 lambda: bot.send_photo(
                     chat_id=channel_id,
-                    photo=media.url,
+                    photo=FSInputFile(media.path),
                     caption=caption,
                 )
             )
@@ -104,7 +110,7 @@ async def _send_single_media(
             await _send_with_retry(
                 lambda: bot.send_video(
                     chat_id=channel_id,
-                    video=media.url,
+                    video=FSInputFile(media.path),
                     caption=caption,
                 )
             )
@@ -116,7 +122,7 @@ async def _send_single_media(
 async def _send_album(
     bot: Bot,
     channel_id: int,
-    medias: list[MediaSchema],
+    medias: list[DownloadedMedia],
     caption: str,
 ) -> None:
     # Telegram allows at most 10 items per media group; larger albums are split
@@ -127,9 +133,9 @@ async def _send_album(
         for offset, media in enumerate(chunk):
             item_caption = caption if (chunk_index == 0 and offset == 0) else None
             if media.type == MediaType.IMAGE:
-                group.append(InputMediaPhoto(media=media.url, caption=item_caption))
+                group.append(InputMediaPhoto(media=FSInputFile(media.path), caption=item_caption))
             elif media.type == MediaType.VIDEO:
-                group.append(InputMediaVideo(media=media.url, caption=item_caption))
+                group.append(InputMediaVideo(media=FSInputFile(media.path), caption=item_caption))
             else:
                 logger.warning(f"Пропускаю медиа неизвестного типа: {media.type}")
 
