@@ -10,6 +10,7 @@ from dishka import AsyncContainer
 from core.schemas.post import PostSchema
 from core.config.settings import Settings
 from core.database.uow import UnitOfWork
+from core.exceptions import MediaUnavailableError
 from core.distribution.content import delete_bottom_links
 
 from .collector import collect_posts_for_channel
@@ -25,6 +26,12 @@ POST_INTERVAL = 40  # seconds between successful sends
 # A cycle older than this is considered stale and is not resumed on startup
 # (the next slot is only 4 hours away anyway).
 RESUME_WINDOW = timedelta(hours=4)
+
+# Guards against two distribution runs overlapping. A restart can leave a slow
+# resume still running (40s between sends) when the next cron slot fires; in
+# that case we skip the new run entirely instead of posting the same content
+# twice close together.
+_distribution_lock = asyncio.Lock()
 
 
 def current_slot() -> str:
@@ -42,16 +49,29 @@ async def resume_incomplete_cycle(container: AsyncContainer) -> None:
     if cycle is None:
         return
 
-    # The current slot belongs to the scheduler's cron job; only resume an
-    # earlier slot that an interrupted run left unfinished.
-    if cycle.slot == current_slot():
-        return
-
     logger.info(f"Найден незавершённый цикл {cycle.slot}, возобновляю...")
     await distribute_posts_globally(container, slot=cycle.slot)
 
 
 async def distribute_posts_globally(
+    container: AsyncContainer,
+    slot: str | None = None,
+) -> None:
+    # locked() + acquire is race-free in a single event loop: acquiring an
+    # uncontended lock does not yield, so no other run can slip in between the
+    # check and the acquire. A second concurrent trigger is skipped, not queued.
+    if _distribution_lock.locked():
+        logger.warning(
+            "Рассылка уже идёт — пропускаю запуск нового цикла, "
+            "чтобы не отправить посты повторно."
+        )
+        return
+
+    async with _distribution_lock:
+        await _run_distribution_cycle(container, slot)
+
+
+async def _run_distribution_cycle(
     container: AsyncContainer,
     slot: str | None = None,
 ) -> None:
@@ -157,6 +177,13 @@ async def distribute_post_to_channel(
 
         try:
             await send_post_to_channel(container, bot, channel_id, post)
+
+        except MediaUnavailableError as e:
+            logger.info(
+                f"Пост {post.id} (@{post.channel_username}) пропущен — медиа "
+                f"недоступно: {e}. Беру следующий пост."
+            )
+            continue
 
         except TelegramBadRequest as e:
             logger.warning(
